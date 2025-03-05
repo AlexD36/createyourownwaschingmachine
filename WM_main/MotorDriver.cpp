@@ -1,239 +1,105 @@
 /*******************************************************************************
-@Module         Motor Driver used for WM module
+@Filename       WM_main.ino
+--------------------------------------------------------------------------------
+@Description    This is the main file. This is where the functions are called inside
+        setup() function or in the loop() function
 
 --------------------------------------------------------------------------------
-@Filename       MotorDriver.cpp
---------------------------------------------------------------------------------
-@Description    Check the header and class description for more details.
+@Author        Dragos B., Marian S., Stefan I.
+@Date          23.03.2020
 
---------------------------------------------------------------------------------
-@Author        Dragos B.
-@Date          13.11.2018
-               
 @Copyright     Miele  Cie Copyright 2020
 
 *******************************************************************************/
 
 
+
 /*******************************************************************************
 @Project Includes
 *******************************************************************************/
+#include "ControlPanel.h"
+#include "LED.h"
+#include "TwinDos.h"
+#include "LCDDisplay.h"
 #include "MotorDriver.h"
-#include "PWM_Timer.h"
-/*******************************************************************************
-@Macros (global)
-*******************************************************************************/
-#define SECOND_TO_MILLISECONDS      (1000)
-//#define PWM_CHANNEL_ONE             (1)
-//#define PWM_CHANNEL_TWO              (2)
-
-#define PWM_FREQUENCY               (12000)
-#define RESOLUTION_BITS             (8)
-
-// This delay is used in order to call one line for
-// a certain number of milliseconds.
-// It should be used like this: DELAY_NON_BREAKING(WaitMs_u32) CodeToBeCalled();
-#define DELAY_NON_BREAKING(WaitMs_u32) for (unsigned long time_now = millis(); millis() < time_now + WaitMs_u32;)
-
-// This part is the replacement of delay form Arduino
-#define DELAY_DO_NOTHING(WaitMs_u32) DELAY_NON_BREAKING(WaitMs_u32);
+#include "GenericDisplay.h"
 /*******************************************************************************
 @Constants (global)
 *******************************************************************************/
-
-/*******************************************************************************
-@Type definitions  (global)
-*******************************************************************************/
-
-/*******************************************************************************
-@Local Variables 
-*******************************************************************************/
-
-/*******************************************************************************
-@External Prototypes
-*******************************************************************************/
-
-/*******************************************************************************
-@Prototypes local Functions
-*******************************************************************************/
+#define ERROR_SERIAL(err){Serial.print(_LINE_);Serial.print("ERROR is: ");Serial.println((int)err);}
 
 
-/*******************************************************************************
-Function description and additional notes,
-are given at the function prototype in the header file
-*******************************************************************************/
-uint16_t MotorDriver::Initialise_u16(uint8_t MotorPinClockwise_u8, uint8_t MotorPinCounterClockwise_u8)
+uint16_t Initialise_u16(uint8_t MotorPinClockwise_u8, uint8_t MotorPinCounterClockwise_u8);
+    // This should be in the setup
+// Main TODO
+// 2. TODO: Move all the Miele Libraries and CPP files into a separate folder than Adafruit, LiquidCrista_I2c and etc.
+// details about the board ESP32 can be added
+// 5. Create a fully functional washing machine using all the components
+LCDDisplay disp_o(21, 22, 0x27);
+#ifndef _GENERICDISPLAY_h
+#define _GENERICDISPLAY_h
+  
+#include "LiquidCrystal_I2C.h"
+
+
+
+// Since most of the times a display will be LCD 16x2, then this will be the standard definitions.
+
+// Initial starting point of the LCD cursor (0,0) 
+#define CURSOR_INITIAL_INDEX 0
+#define NUMBER_OF_COLUMNS    16
+#define NUMBER_OF_ROWS       2
+
+class GenericDisplay
 {
-    uint16_t ErrorCode_u16 = ERROR_PIN_NOT_COMPATIBLE_WITH_PWM;
+  public:
+    virtual bool init_b();
+    virtual bool DisplayString_b(char* StringToDisplay_pc);
+    virtual bool ClearScreen_b();
+        virtual bool SendCharacter_b(char CharacterToDisplay);
+    //todo not implemented
+    virtual bool AutoScroll_b();
+    virtual bool ChangeFontSize_b();
     
-
-    // Check that the pins are not the same
-    if (MotorPinClockwise_u8 != MotorPinCounterClockwise_u8)
-    {
-        // Are Pins provided PWM pins?
-        if ((m_isPinPwm_b(MotorPinCounterClockwise_u8) == true) && 
-             (m_isPinPwm_b(MotorPinClockwise_u8) == true))
-        {
-            m_MotorPinClockwise_u8 = MotorPinClockwise_u8;
-            m_MotorPinCounterClockwise_u8 = MotorPinCounterClockwise_u8;
-
-            // Initialize the channels.
-            ledcAttachPin(MotorPinClockwise_u8, clockwiseChannel);
-            ledcAttachPin(MotorPinCounterClockwise_u8, counter_clockwiseChannel);
-
-            // Set PWM channel.
-            ledcSetup(clockwiseChannel, PWM_FREQUENCY, RESOLUTION_BITS);
-            ledcSetup(counter_clockwiseChannel, PWM_FREQUENCY, RESOLUTION_BITS);
-
-            // The motor is not moving.
-            m_StopMotor_v();
-
-            // Module is now initialized.
-            m_isModuleInitialised_b = true;
-
-
-            ErrorCode_u16 = ERROR_NO_ERROR;
-        }
-    } 
-
-    return ErrorCode_u16;
-
-}
-
-/*******************************************************************************
-Function description and additional notes,
-are given at the function prototype in the header file
-*******************************************************************************/
-uint16_t MotorDriver::MoveMotor_u16(uint8_t Speed_u8, MotorRotation_te Rotation_e, uint16_t TimeInSeconds_u16)
-{
-    uint16_t ErrorCode_u16 = ERROR_MODULE_IS_NOT_INTIALISED;
-
-    // Is the module is initialized?
-    if (m_isModuleInitialised_b == true)
-    {
-        // Speed value should be between 0-100
-        ErrorCode_u16 = ERROR_VALUE_TOO_HIGH;
-        
-        // Check if the speed is in limit.
-        if (Speed_u8 <= 100)
-        {
-            if (Rotation_e == m_MotorRotation_e || m_MotorRotation_e == MOTOR_ROTATION_NOT_SPECIFIED)
-            {
-                m_MotorRotation_e = Rotation_e;
-
-                // Map the values from 0-100 to 0-255.
-                Speed_u8 = map(Speed_u8, 0, 100, 0, 255);
-
-                // Transform seconds in milliseconds.
-                TimeInSeconds_u16 = TimeInSeconds_u16 * SECOND_TO_MILLISECONDS;
-
-                // How the motor should spin?
-                if (m_MotorRotation_e == MOTOR_ROTATION_CLOCKWISE)
-                {
-
-                    ledcWrite(clockwiseChannel, Speed_u8);
-
-                    ErrorCode_u16 = ERROR_NO_ERROR;
-                }
-                else if (m_MotorRotation_e == MOTOR_ROTATION_COUNTER_CLOCKWISE)
-                {
-                    ledcWrite(counter_clockwiseChannel, Speed_u8);
-
-                    ErrorCode_u16 = ERROR_NO_ERROR;
-
-                }
-            }
-            else
-            {
-                // We have an error so stop the motor.
-                m_StopMotor_v();
-                Serial.println("We have an error, you want to change the direction while spinning. The motor will stop.");
-                ErrorCode_u16 = ERROR_ROTATION_MOTOR;
-                m_MotorRotation_e = MOTOR_ROTATION_NOT_SPECIFIED;
-            }
-        }
-    }
-
-    return ErrorCode_u16; 
-}
-
-/*******************************************************************************
-Function description and additional notes,
-are given at the function prototype in the header file
-*******************************************************************************/
-#if FUTURE_IMPLEMENATION == 1
-MotorRotation_te MotorDriver::GetMotorRotation_e()
-{
-    // Is the module is initialized?
-    if (m_isModuleInitialised_b == true)
-    {
-        return m_MotorRotation_e;
-    }
-    else
-    {
-        // In case of an error.
-        return MOTOR_ROTATION_NOT_SPECIFIED;
-    }
-}
-
-#endif // FUTURE_IMPLEMENATION
-
-/*******************************************************************************
-Function description and additional notes,
-are given at the function prototype in the header file
-*******************************************************************************/
-uint16_t MotorDriver::StopMotor_u16(uint16_t TimeInSeconds_u16)
-{
-    uint16_t ErrorCode_u16 = ERROR_MODULE_IS_NOT_INTIALISED;
-
-    // Is the module is initialized?
-    if (m_isModuleInitialised_b == true)
-    {
-        m_StopMotor_v();
-        ErrorCode_u16 = ERROR_NO_ERROR;
-        
-    }
-
-    return ErrorCode_u16;
-}
-
-/*******************************************************************************
-Function description and additional notes,
-are given at the function prototype in the header file
-*******************************************************************************/
-void MotorDriver::m_StopMotor_v()
-{
-    // Set PWM pins to LOW
-    ledcWrite(clockwiseChannel, 0);
-    ledcWrite(counter_clockwiseChannel, 0);
-
-    m_isMotorMoving_b = false;
-    m_MotorRotation_e = MOTOR_ROTATION_NOT_SPECIFIED;
-
-}
-
-/*******************************************************************************
-Function description and additional notes,
-are given at the function prototype in the header file
-*******************************************************************************/
-bool MotorDriver::m_isPinPwm_b(uint8_t Pin_8)
-{
-    bool isPwmPinValid_b = false;
     
-    // All the pins that are PWM capable for ESP32.
-	
-	// here in the code it can be used like this: 
-	const uint8_t ValidPwmPins_au8[] = VALID_PWM_I2C_PINS;
-	
-    for (uint8_t i = 0; i< sizeof(ValidPwmPins_au8)/sizeof(ValidPwmPins_au8[0]); i++)
-    {
-        // Is pin PWM capable?
-        if (Pin_8 == ValidPwmPins_au8[i])
-        {
-            isPwmPinValid_b = true;
-            break;
-        }
-    }
+  // Since most of the times a display will be LCD 16x2, then this will be the standard settings.
+  protected:
+  LiquidCrystal_I2C * lcd_po;
+  // Writing coordinates of the LCD 16x2 cursor.
+    uint8_t WritingCursorLine_u8;
+    uint8_t WritingCursorColumn_u8;
+  
+  // These are the pins that we use for the I2C protocol.
+  // SdaPinNumber_u8 - is used to control the Serial Data Line
+  // SclPinNumber_u8 - is used to control the Serial Clock Line 
+  // DeviceAdress_u8 - holds the display device address
+    uint8_t SdaPinNumber_u8;
+    uint8_t SclPinNumber_u8;
+    uint8_t DeviceAdress_u8;
 
-    return isPwmPinValid_b;
+};
+#endif
+MotorDriver motor_ob;
+void setup()
+{
+    // put your setup code here, to run once:
+    
+    Serial.begin(9600);                 // serial Init for test messages
+    delay(1500);                        // give time to Wemos Lolin32 to finish setup
+    disp_o.init_b();
+    ERROR_SERIAL(motor_ob.Initialise_u16(19, 25));
+}
+
+void loop()
+{ 
+    disp_o.DisplayString_b("Hello world1");
+    delay(1000);
+    disp_o.ClearScreen_b();
+    disp_o.DisplayString_b("Hello world2");   
+
+
+    ERROR_SERIAL(motor_ob.MoveMotor_u16(80, MOTOR_ROTATION_CLOCKWISE, 2));
+    ERROR_SERIAL(motor_ob.StopMotor_u16(2));
+    ERROR_SERIAL(motor_ob.MoveMotor_u16(80, MOTOR_ROTATION_COUNTER_CLOCKWISE, 2));
+    ERROR_SERIAL(motor_ob.StopMotor_u16(2));
 }

@@ -68,7 +68,7 @@ void InitialiseSound_v()
     if (channel_u8 != 17)
     {
         ledcSetup(channel_u8, PWM_FREQUENCY, 8);
-        ledcAttachPin(BUZZER_PIN, channel_u8);
+        ledcAttach(BUZZER_PIN, channel_u8);
     }
     else
     {
